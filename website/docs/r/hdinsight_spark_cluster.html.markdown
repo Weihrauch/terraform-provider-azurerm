@@ -54,11 +54,24 @@ resource "azurerm_hdinsight_spark_cluster" "example" {
     is_default           = true
   }
 
+  configuration_override {
+    section = "spark2-env"
+    configuration = {
+       "content" = file("${path.module}/files/spark2-env.sh")
+    }
+  }
+
   roles {
     head_node {
       vm_size  = "Standard_A3"
       username = "acctestusrvm"
       password = "AccTestvdSC4daf986!"
+
+      script_actions        {
+        name = "update os"
+        uri = "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/install-updates-schedule-reboots.sh"
+        parameters = "1 0"
+      }
     }
 
     worker_node {
@@ -66,12 +79,24 @@ resource "azurerm_hdinsight_spark_cluster" "example" {
       username              = "acctestusrvm"
       password              = "AccTestvdSC4daf986!"
       target_instance_count = 3
+      
+      script_actions        {
+        name = "update os"
+        uri = "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/install-updates-schedule-reboots.sh"
+        parameters = "1 0"
+      }
     }
 
     zookeeper_node {
       vm_size  = "Medium"
       username = "acctestusrvm"
       password = "AccTestvdSC4daf986!"
+
+      script_actions        {
+        name = "update os"
+        uri = "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/install-updates-schedule-reboots.sh"
+        parameters = "1 0"
+      }
     }
   }
 }
@@ -155,6 +180,8 @@ A `head_node` block supports the following:
 
 * `virtual_network_id` - (Optional) The ID of the Virtual Network where the Head Nodes should be provisioned within. Changing this forces a new resource to be created.
 
+* `script_actions` - (Optional) A `script_actions` block as defined below.
+
 ---
 
 A `roles` block supports the following:
@@ -231,6 +258,8 @@ A `worker_node` block supports the following:
 
 * `autoscale` - (Optional) A `autoscale` block as defined below.
 
+* `script_actions` - (Optional) A `script_actions` block as defined below.
+
 ---
 
 A `zookeeper_node` block supports the following:
@@ -250,6 +279,8 @@ A `zookeeper_node` block supports the following:
 * `subnet_id` - (Optional) The ID of the Subnet within the Virtual Network where the Zookeeper Nodes should be provisioned within. Changing this forces a new resource to be created.
 
 * `virtual_network_id` - (Optional) The ID of the Virtual Network where the Zookeeper Nodes should be provisioned within. Changing this forces a new resource to be created.
+
+* `script_actions` - (Optional) A `script_actions` block as defined below.
 
 --- 
 
@@ -326,6 +357,16 @@ A `capacity` block supports the following:
 
 ---
 
+A `script_actions` block supports the following:
+
+* `name` - (Required) An unique name of script action
+
+* `uri` - (Required) An uri where the script could be fetched example : "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/*install-updates-schedule-reboots.sh"
+
+* `parameters` - (Optionnal) A string which consist in space separated arguments for script
+
+---
+
 A `recurrence` block supports the following:
 
 * `schedule` - (Required) A list of `schedule` blocks as defined below.
@@ -359,6 +400,16 @@ A `security_profile` block supports the following:
 * `msi_resource_id` - (Required) The User Assigned Identity for the HDInsight Cluster. Changing this forces a new resource to be created.
 
 * `cluster_users_group_dns` - (Optional) A list of the distinguished names for the cluster user groups. Changing this forces a new resource to be created.
+
+---
+
+A `configuration_override` block supports the following:
+
+* `section` - (Required) Name of the configuration section seen in Ambari Web interface. Common customized section for spark could be spark2-env, spark2-default
+
+* `configuration` - (Required) A Key Value map of configuration item which would be setted up in section
+
+-> **NOTE:** Some section/keys pair are blacklisted for modification throught `configuration_override` block because they conflict with Microsoft auto defined values at build or other speciliazed ressource blocks like `hive`, `oozie`, `ambari` , `gateway` already setup those section/keys/value 
 
 ## Attributes Reference
 

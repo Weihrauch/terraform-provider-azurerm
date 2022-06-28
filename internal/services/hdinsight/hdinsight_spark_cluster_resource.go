@@ -101,6 +101,8 @@ func resourceHDInsightSparkCluster() *pluginsdk.Resource {
 
 			"metastores": SchemaHDInsightsExternalMetastores(),
 
+			"configuration_override": SchemaHDInsightsConfigurations(),
+
 			"network": SchemaHDInsightsNetwork(),
 
 			"security_profile": SchemaHDInsightsSecurityProfile(),
@@ -160,14 +162,21 @@ func resourceHDInsightSparkClusterCreate(d *pluginsdk.ResourceData, meta interfa
 	componentVersionsRaw := d.Get("component_version").([]interface{})
 	componentVersions := expandHDInsightSparkComponentVersion(componentVersionsRaw)
 
+	configurations := map[string]*interface{}{}
 	gatewayRaw := d.Get("gateway").([]interface{})
-	configurations := ExpandHDInsightsConfigurations(gatewayRaw)
+	gatewayConfigurations := ExpandHDInsightsGatewayConfigurations(gatewayRaw)
+	for k, v := range gatewayConfigurations {
+		configurations[k] = &v
+	}
 
 	metastoresRaw := d.Get("metastores").([]interface{})
 	metastores := expandHDInsightsMetastore(metastoresRaw)
 	for k, v := range metastores {
-		configurations[k] = v
+		configurations[k] = &v
 	}
+
+	configurationsRaw := d.Get("configuration_override").(*pluginsdk.Set).List()
+	ExpandHDInsightsConfigurationsOverrides(&configurationsRaw, &configurations)
 
 	storageAccountsRaw := d.Get("storage_account").([]interface{})
 	storageAccountsGen2Raw := d.Get("storage_account_gen2").([]interface{})
@@ -278,6 +287,7 @@ func resourceHDInsightSparkClusterRead(d *pluginsdk.ResourceData, meta interface
 	clustersClient := meta.(*clients.Client).HDInsight.ClustersClient
 	configurationsClient := meta.(*clients.Client).HDInsight.ConfigurationsClient
 	extensionsClient := meta.(*clients.Client).HDInsight.ExtensionsClient
+	actionScriptsClient := meta.(*clients.Client).HDInsight.ScriptActionsClient
 	ctx, cancel := timeouts.ForRead(meta.(*clients.Client).StopContext, d)
 	defer cancel()
 
@@ -317,6 +327,11 @@ func resourceHDInsightSparkClusterRead(d *pluginsdk.ResourceData, meta interface
 		d.Set("location", azure.NormalizeLocation(*location))
 	}
 
+	actionScripts, err := actionScriptsClient.ListByCluster(ctx, resourceGroup, name)
+	if err != nil {
+		return fmt.Errorf("failure retrieving ActionScripts for HDInsight HBase Cluster %q (Resource Group %q): %+v", name, resourceGroup, err)
+	}
+
 	// storage_account isn't returned so I guess we just leave it ¯\_(ツ)_/¯
 	if props := resp.Properties; props != nil {
 		tier := ""
@@ -335,13 +350,13 @@ func resourceHDInsightSparkClusterRead(d *pluginsdk.ResourceData, meta interface
 				return fmt.Errorf("flattening `component_version`: %+v", err)
 			}
 
-			if err := d.Set("gateway", FlattenHDInsightsConfigurations(gateway, d)); err != nil {
+			if err := d.Set("gateway", FlattenHDInsightsGatewayConfiguration(gateway, d)); err != nil {
 				return fmt.Errorf("flattening `gateway`: %+v", err)
 			}
 
 			flattenHDInsightsMetastores(d, configurations.Configurations)
 		}
-
+		FlattenHDInsightsConfigurationOverrides(d, configurations.Configurations)
 		sparkRoles := hdInsightRoleDefinition{
 			HeadNodeDef:      hdInsightSparkClusterHeadNodeDefinition,
 			WorkerNodeDef:    hdInsightSparkClusterWorkerNodeDefinition,
@@ -357,8 +372,8 @@ func resourceHDInsightSparkClusterRead(d *pluginsdk.ResourceData, meta interface
 				return fmt.Errorf("flattening `network`: %+v", err)
 			}
 		}
-
-		flattenedRoles := flattenHDInsightRoles(d, props.ComputeProfile, sparkRoles)
+		clusterActionScripts := actionScripts.Values()
+		flattenedRoles := flattenHDInsightRoles(d, props.ComputeProfile, clusterActionScripts, sparkRoles)
 		if err := d.Set("roles", flattenedRoles); err != nil {
 			return fmt.Errorf("flattening `roles`: %+v", err)
 		}

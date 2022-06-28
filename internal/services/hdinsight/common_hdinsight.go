@@ -247,7 +247,19 @@ func expandHDInsightRoles(input []interface{}, definition hdInsightRoleDefinitio
 	return &roles, nil
 }
 
-func flattenHDInsightRoles(d *pluginsdk.ResourceData, input *hdinsight.ComputeProfile, definition hdInsightRoleDefinition) []interface{} {
+func FlattenHDInsightScriptActionDetails(input []*hdinsight.RuntimeScriptActionDetail) []interface{} {
+	res := []interface{}{}
+	for _, RuntimeScriptActionDetail := range input {
+		res = append(res, map[string]interface{}{
+			"name":       (*RuntimeScriptActionDetail).Name,
+			"uri":        (*RuntimeScriptActionDetail).URI,
+			"parameters": (*RuntimeScriptActionDetail).Parameters,
+		})
+	}
+	return res
+}
+
+func flattenHDInsightRoles(d *pluginsdk.ResourceData, input *hdinsight.ComputeProfile, inputScriptActionsDetail []hdinsight.RuntimeScriptActionDetail, definition hdInsightRoleDefinition) []interface{} {
 	if input == nil || input.Roles == nil {
 		return []interface{}{}
 	}
@@ -272,13 +284,19 @@ func flattenHDInsightRoles(d *pluginsdk.ResourceData, input *hdinsight.ComputePr
 	}
 
 	headNode := FindHDInsightRole(input.Roles, "headnode")
+	headNodeActionScriptDetails := FindHDInsightRoleScriptActions(inputScriptActionsDetail, "headnode")
 	headNodes := FlattenHDInsightNodeDefinition(headNode, existingHeadNodes, definition.HeadNodeDef)
+	headNodes[0].(map[string]interface{})["script_actions"] = FlattenHDInsightScriptActionDetails(headNodeActionScriptDetails)
 
 	workerNode := FindHDInsightRole(input.Roles, "workernode")
+	workerNodeActionScriptDetails := FindHDInsightRoleScriptActions(inputScriptActionsDetail, "workernode")
 	workerNodes := FlattenHDInsightNodeDefinition(workerNode, existingWorkerNodes, definition.WorkerNodeDef)
+	workerNodes[0].(map[string]interface{})["script_actions"] = FlattenHDInsightScriptActionDetails(workerNodeActionScriptDetails)
 
 	zookeeperNode := FindHDInsightRole(input.Roles, "zookeepernode")
+	zookeeperNodeActionScriptDetails := FindHDInsightRoleScriptActions(inputScriptActionsDetail, "zookeepernode")
 	zookeeperNodes := FlattenHDInsightNodeDefinition(zookeeperNode, existingZookeeperNodes, definition.ZookeeperNodeDef)
+	zookeeperNodes[0].(map[string]interface{})["script_actions"] = FlattenHDInsightScriptActionDetails(zookeeperNodeActionScriptDetails)
 
 	result := map[string]interface{}{
 		"head_node":      headNodes,
@@ -440,4 +458,14 @@ func disableHDInsightMonitoring(ctx context.Context, client *hdinsight.Extension
 	}
 
 	return nil
+}
+
+func mergeMaps(maps ...map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	for _, m := range maps {
+		for k, v := range m {
+			result[k] = v
+		}
+	}
+	return result
 }

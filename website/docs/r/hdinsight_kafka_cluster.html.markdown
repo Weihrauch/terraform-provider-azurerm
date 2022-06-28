@@ -59,6 +59,12 @@ resource "azurerm_hdinsight_kafka_cluster" "example" {
       vm_size  = "Standard_D3_V2"
       username = "acctestusrvm"
       password = "AccTestvdSC4daf986!"
+
+      script_actions        {
+        name = "update os"
+        uri = "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/install-updates-schedule-reboots.sh"
+        parameters = "1 0"
+      }
     }
 
     worker_node {
@@ -67,12 +73,24 @@ resource "azurerm_hdinsight_kafka_cluster" "example" {
       password                 = "AccTestvdSC4daf986!"
       number_of_disks_per_node = 3
       target_instance_count    = 3
+
+      script_actions        {
+        name = "update os"
+        uri = "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/install-updates-schedule-reboots.sh"
+        parameters = "1 0"
+      }
     }
 
     zookeeper_node {
       vm_size  = "Standard_D3_V2"
       username = "acctestusrvm"
       password = "AccTestvdSC4daf986!"
+
+      script_actions        {
+        name = "update os"
+        uri = "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/install-updates-schedule-reboots.sh"
+        parameters = "1 0"
+      }
     }
   }
 }
@@ -155,6 +173,8 @@ A `head_node` block supports the following:
 * `subnet_id` - (Optional) The ID of the Subnet within the Virtual Network where the Head Nodes should be provisioned within. Changing this forces a new resource to be created.
 
 * `virtual_network_id` - (Optional) The ID of the Virtual Network where the Head Nodes should be provisioned within. Changing this forces a new resource to be created.
+
+* `script_actions` - (Optional) A `script_actions` block as defined below.
 
 ---
 
@@ -242,6 +262,8 @@ A `zookeeper_node` block supports the following:
 
 * `virtual_network_id` - (Optional) The ID of the Virtual Network where the Zookeeper Nodes should be provisioned within. Changing this forces a new resource to be created.
 
+* `script_actions` - (Optional) A `script_actions` block as defined below.
+
 ---
 
 A `kafka_management_node` block supports the following:
@@ -261,6 +283,8 @@ A `kafka_management_node` block supports the following:
 * `subnet_id` - (Optional) The ID of the Subnet within the Virtual Network where the Kafka Management Nodes should be provisioned within. Changing this forces a new resource to be created.
 
 * `virtual_network_id` - (Optional) The ID of the Virtual Network where the Kafka Management Nodes should be provisioned within. Changing this forces a new resource to be created.
+
+* `script_actions` - (Optional) A `script_actions` block as defined below.
 
 --- 
 
@@ -344,6 +368,16 @@ A `security_profile` block supports the following:
 * `msi_resource_id` - (Required) The User Assigned Identity for the HDInsight Cluster. Changing this forces a new resource to be created.
 
 * `cluster_users_group_dns` - (Optional) A list of the distinguished names for the cluster user groups. Changing this forces a new resource to be created.
+
+--
+
+A `script_actions` block supports the following:
+
+* `name` - (Required) An unique name of script action
+
+* `uri` - (Required) An uri where the script could be fetched example : "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/*install-updates-schedule-reboots.sh"
+
+* `parameters` - (Optionnal) A string which consist in space separated arguments for script
 
 ## Attributes Reference
 

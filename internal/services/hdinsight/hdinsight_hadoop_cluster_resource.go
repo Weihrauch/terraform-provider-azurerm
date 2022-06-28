@@ -200,7 +200,7 @@ func resourceHDInsightHadoopClusterCreate(d *pluginsdk.ResourceData, meta interf
 	componentVersions := expandHDInsightHadoopComponentVersion(componentVersionsRaw)
 
 	gatewayRaw := d.Get("gateway").([]interface{})
-	configurations := ExpandHDInsightsConfigurations(gatewayRaw)
+	configurations := ExpandHDInsightsGatewayConfigurations(gatewayRaw)
 
 	metastoresRaw := d.Get("metastores").([]interface{})
 	metastores := expandHDInsightsMetastore(metastoresRaw)
@@ -395,7 +395,7 @@ func resourceHDInsightHadoopClusterRead(d *pluginsdk.ResourceData, meta interfac
 				return fmt.Errorf("flattening `component_version`: %+v", err)
 			}
 
-			if err := d.Set("gateway", FlattenHDInsightsConfigurations(gateway, d)); err != nil {
+			if err := d.Set("gateway", FlattenHDInsightsGatewayConfiguration(gateway, d)); err != nil {
 				return fmt.Errorf("flattening `gateway`: %+v", err)
 			}
 
@@ -413,7 +413,8 @@ func resourceHDInsightHadoopClusterRead(d *pluginsdk.ResourceData, meta interfac
 			WorkerNodeDef:    hdInsightHadoopClusterWorkerNodeDefinition,
 			ZookeeperNodeDef: hdInsightHadoopClusterZookeeperNodeDefinition,
 		}
-		flattenedRoles := flattenHDInsightRoles(d, props.ComputeProfile, hadoopRoles)
+		clusterActionScripts := []hdinsight.RuntimeScriptActionDetail{}
+		flattenedRoles := flattenHDInsightRoles(d, props.ComputeProfile, clusterActionScripts, hadoopRoles)
 
 		applicationsClient := meta.(*clients.Client).HDInsight.ApplicationsClient
 

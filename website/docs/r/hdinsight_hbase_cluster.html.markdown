@@ -53,6 +53,16 @@ resource "azurerm_hdinsight_hbase_cluster" "example" {
     storage_account_key  = azurerm_storage_account.example.primary_access_key
     is_default           = true
   }
+  
+  configuration_override {
+    section = "hbase-site"
+    configuration = {
+       "hbase.client.scanner.caching" = "2145000"
+       "phoenix.queryserver.loadbalancer.enabled" = "true"
+       "hbase.mapreduce.bulkload.max.hfiles.perRegion.perFamily" = "1024"
+       "phoenix.rpc.index.handler.count" = "30"
+    }
+  }
 
   roles {
     head_node {
@@ -66,12 +76,32 @@ resource "azurerm_hdinsight_hbase_cluster" "example" {
       username              = "acctestusrvm"
       password              = "AccTestvdSC4daf986!"
       target_instance_count = 3
+      
+      script_actions        {
+        name = "update os"
+        uri = "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/install-updates-schedule-reboots.sh"
+        parameters = "1 0"
+      }
+
+     script_actions {
+        name = "hbase spark connector script"
+        uri = "https://hdiconfigactions.blob.core.windows.net/hbasesparkconnectorscript/connector-hbase.sh"
+        parameters = "-s abfs://fshdinsightspark@blobName.dfs.core.windows.net"
+      }
+
     }
 
     zookeeper_node {
       vm_size  = "Standard_D3_V2"
       username = "acctestusrvm"
       password = "AccTestvdSC4daf986!"
+
+      script_actions        {
+        name = "update os"
+        uri = "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/install-updates-schedule-reboots.sh"
+        parameters = "1 0"
+      }
+
     }
   }
 }
@@ -92,6 +122,8 @@ The following arguments are supported:
 * `component_version` - (Required) A `component_version` block as defined below.
 
 * `gateway` - (Required) A `gateway` block as defined below.
+
+* `configuration_override`- (Optionnal) A `configuration_override` block as defined below
 
 * `roles` - (Required) A `roles` block as defined below.
 
@@ -229,6 +261,8 @@ A `worker_node` block supports the following:
 
 * `autoscale` - (Optional) A `autoscale` block as defined below.
 
+* `script_actions` - (Optional) A `script_actions` block as defined below.
+
 ---
 
 A `zookeeper_node` block supports the following:
@@ -248,6 +282,8 @@ A `zookeeper_node` block supports the following:
 * `subnet_id` - (Optional) The ID of the Subnet within the Virtual Network where the Zookeeper Nodes should be provisioned within. Changing this forces a new resource to be created.
 
 * `virtual_network_id` - (Optional) The ID of the Virtual Network where the Zookeeper Nodes should be provisioned within. Changing this forces a new resource to be created.
+
+* `script_actions` - (Optional) A `script_actions` block as defined below.
 
 --- 
 
@@ -314,6 +350,15 @@ An `autoscale` block supports the following:
 
 ---
 
+A `script_actions` block supports the following:
+
+* `name` - (Required) An unique name of script action
+
+* `uri` - (Required) An uri where the script could be fetched example : "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/*install-updates-schedule-reboots.sh"
+
+* `parameters` - (Optionnal) A string which consist in space separated arguments for script
+---
+
 A `recurrence` block supports the following:
 
 * `schedule` - (Required) A list of `schedule` blocks as defined below.
@@ -347,6 +392,17 @@ A `security_profile` block supports the following:
 * `msi_resource_id` - (Required) The User Assigned Identity for the HDInsight Cluster. Changing this forces a new resource to be created.
 
 * `cluster_users_group_dns` - (Optional) A list of the distinguished names for the cluster user groups. Changing this forces a new resource to be created.
+
+---
+
+A `configuration_override` block supports the following:
+
+* `section` - (Required) Name of the configuration section seen in Ambari Web interface. Common customized section for hbase could be hbase-site, hbase-env, hdfs-site etc
+
+* `configuration` - (Required) A Key Value map of configuration item which would be setted up in section
+
+-> **NOTE:** Some section/keys pair are blacklisted for modification throught `configuration_override` block because they conflict with Microsoft auto defined values at build or other speciliazed ressource blocks like `hive`, `oozie`, `ambari` , `gateway` already setup those section/keys/value 
+
 
 ## Attributes Reference
 

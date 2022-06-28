@@ -161,7 +161,7 @@ func resourceHDInsightInteractiveQueryClusterCreate(d *pluginsdk.ResourceData, m
 	componentVersions := expandHDInsightInteractiveQueryComponentVersion(componentVersionsRaw)
 
 	gatewayRaw := d.Get("gateway").([]interface{})
-	configurations := ExpandHDInsightsConfigurations(gatewayRaw)
+	configurations := ExpandHDInsightsGatewayConfigurations(gatewayRaw)
 
 	metastoresRaw := d.Get("metastores").([]interface{})
 	metastores := expandHDInsightsMetastore(metastoresRaw)
@@ -335,7 +335,7 @@ func resourceHDInsightInteractiveQueryClusterRead(d *pluginsdk.ResourceData, met
 				return fmt.Errorf("flattening `component_version`: %+v", err)
 			}
 
-			if err := d.Set("gateway", FlattenHDInsightsConfigurations(gateway, d)); err != nil {
+			if err := d.Set("gateway", FlattenHDInsightsGatewayConfiguration(gateway, d)); err != nil {
 				return fmt.Errorf("flattening `gateway`: %+v", err)
 			}
 
@@ -357,7 +357,7 @@ func resourceHDInsightInteractiveQueryClusterRead(d *pluginsdk.ResourceData, met
 			WorkerNodeDef:    hdInsightInteractiveQueryClusterWorkerNodeDefinition,
 			ZookeeperNodeDef: hdInsightInteractiveQueryClusterZookeeperNodeDefinition,
 		}
-		flattenedRoles := flattenHDInsightRoles(d, props.ComputeProfile, interactiveQueryRoles)
+		flattenedRoles := flattenHDInsightRoles(d, props.ComputeProfile, nil, interactiveQueryRoles)
 		if err := d.Set("roles", flattenedRoles); err != nil {
 			return fmt.Errorf("flattening `roles`: %+v", err)
 		}

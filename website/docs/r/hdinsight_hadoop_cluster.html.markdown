@@ -59,6 +59,12 @@ resource "azurerm_hdinsight_hadoop_cluster" "example" {
       vm_size  = "Standard_D3_V2"
       username = "acctestusrvm"
       password = "AccTestvdSC4daf986!"
+      
+      script_actions        {
+        name = "update os"
+        uri = "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/install-updates-schedule-reboots.sh"
+        parameters = "1 0"
+      }
     }
 
     worker_node {
@@ -66,12 +72,24 @@ resource "azurerm_hdinsight_hadoop_cluster" "example" {
       username              = "acctestusrvm"
       password              = "AccTestvdSC4daf986!"
       target_instance_count = 3
+      
+      script_actions        {
+        name = "update os"
+        uri = "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/install-updates-schedule-reboots.sh"
+        parameters = "1 0"
+      }
     }
 
     zookeeper_node {
       vm_size  = "Standard_D3_V2"
       username = "acctestusrvm"
       password = "AccTestvdSC4daf986!"
+      
+      script_actions        {
+        name = "update os"
+        uri = "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/install-updates-schedule-reboots.sh"
+        parameters = "1 0"
+      }
     }
   }
 }
@@ -153,6 +171,8 @@ A `head_node` block supports the following:
 
 * `virtual_network_id` - (Optional) The ID of the Virtual Network where the Head Nodes should be provisioned within. Changing this forces a new resource to be created.
 
+* `script_actions` - (Optional) A `script_actions` block as defined below.
+
 ---
 
 A `roles` block supports the following:
@@ -231,6 +251,9 @@ A `worker_node` block supports the following:
 
 * `autoscale` - (Optional) A `autoscale` block as defined below.
 
+* `script_actions` - (Optional) A `script_actions` block as defined below.
+
+
 ---
 
 A `zookeeper_node` block supports the following:
@@ -250,6 +273,8 @@ A `zookeeper_node` block supports the following:
 * `subnet_id` - (Optional) The ID of the Subnet within the Virtual Network where the Zookeeper Nodes should be provisioned within. Changing this forces a new resource to be created.
 
 * `virtual_network_id` - (Optional) The ID of the Virtual Network where the Zookeeper Nodes should be provisioned within. Changing this forces a new resource to be created.
+
+* `script_actions` - (Optional) A `script_actions` block as defined below.
 
 ---
 
@@ -339,6 +364,18 @@ A `capacity` block supports the following:
 * `max_instance_count` - (Required) The maximum number of worker nodes to autoscale to based on the cluster's activity.
 
 * `min_instance_count` - (Required) The minimum number of worker nodes to autoscale to based on the cluster's activity.
+
+---
+
+A `script_actions` block supports the following:
+
+* `name` - (Required) An unique name of script action
+
+* `uri` - (Required) An uri where the script could be fetched example : "https://hdiconfigactions.blob.core.windows.net/linuxospatchingrebootconfigv02/*install-updates-schedule-reboots.sh"
+
+* `parameters` - (Optionnal) A string which consist in space separated arguments for script
+
+-> **NOTE:** Some section/keys pair are blacklisted for modification throught `configuration_override` block because they conflict with Microsoft auto defined values at build or other speciliazed ressource blocks like `hive`, `oozie`, `ambari` , `gateway` already setup those section/keys/value 
 
 ---
 

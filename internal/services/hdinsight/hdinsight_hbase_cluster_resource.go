@@ -74,6 +74,13 @@ func resourceHDInsightHBaseCluster() *pluginsdk.Resource {
 
 			"tls_min_version": SchemaHDInsightTls(),
 
+			"encryption_in_transit_enabled": {
+				Type:     pluginsdk.TypeBool,
+				Optional: true,
+				ForceNew: true,
+				Computed: true,
+			},
+
 			"component_version": {
 				Type:     pluginsdk.TypeList,
 				Required: true,
@@ -92,6 +99,8 @@ func resourceHDInsightHBaseCluster() *pluginsdk.Resource {
 			"gateway": SchemaHDInsightsGateway(),
 
 			"metastores": SchemaHDInsightsExternalMetastores(),
+
+			"configuration_override": SchemaHDInsightsConfigurations(),
 
 			"network": SchemaHDInsightsNetwork(),
 
@@ -152,14 +161,21 @@ func resourceHDInsightHBaseClusterCreate(d *pluginsdk.ResourceData, meta interfa
 	componentVersionsRaw := d.Get("component_version").([]interface{})
 	componentVersions := expandHDInsightHBaseComponentVersion(componentVersionsRaw)
 
+	configurations := map[string]*interface{}{}
 	gatewayRaw := d.Get("gateway").([]interface{})
-	configurations := ExpandHDInsightsConfigurations(gatewayRaw)
+	gatewayConfigurations := ExpandHDInsightsGatewayConfigurations(gatewayRaw)
+	for k, v := range gatewayConfigurations {
+		configurations[k] = &v
+	}
 
 	metastoresRaw := d.Get("metastores").([]interface{})
 	metastores := expandHDInsightsMetastore(metastoresRaw)
 	for k, v := range metastores {
-		configurations[k] = v
+		configurations[k] = &v
 	}
+
+	configurationsRaw := d.Get("configuration_override").(*pluginsdk.Set).List()
+	ExpandHDInsightsConfigurationsOverrides(&configurationsRaw, &configurations)
 
 	storageAccountsRaw := d.Get("storage_account").([]interface{})
 	storageAccountsGen2Raw := d.Get("storage_account_gen2").([]interface{})
@@ -192,6 +208,7 @@ func resourceHDInsightHBaseClusterCreate(d *pluginsdk.ResourceData, meta interfa
 	if !utils.ResponseWasNotFound(existing.Response) {
 		return tf.ImportAsExistsError("azurerm_hdinsight_hbase_cluster", id.ID())
 	}
+	encryptionInTransit := d.Get("encryption_in_transit_enabled").(bool)
 
 	params := hdinsight.ClusterCreateParametersExtended{
 		Location: utils.String(location),
@@ -200,7 +217,10 @@ func resourceHDInsightHBaseClusterCreate(d *pluginsdk.ResourceData, meta interfa
 			OsType:                 hdinsight.OSTypeLinux,
 			ClusterVersion:         utils.String(clusterVersion),
 			MinSupportedTLSVersion: utils.String(tls),
-			NetworkProperties:      networkProperties,
+			EncryptionInTransitProperties: &hdinsight.EncryptionInTransitProperties{
+				IsEncryptionInTransitEnabled: &encryptionInTransit,
+			},
+			NetworkProperties: networkProperties,
 			ClusterDefinition: &hdinsight.ClusterDefinition{
 				Kind:             utils.String("HBase"),
 				ComponentVersion: componentVersions,
@@ -265,6 +285,7 @@ func resourceHDInsightHBaseClusterRead(d *pluginsdk.ResourceData, meta interface
 	clustersClient := meta.(*clients.Client).HDInsight.ClustersClient
 	configurationsClient := meta.(*clients.Client).HDInsight.ConfigurationsClient
 	extensionsClient := meta.(*clients.Client).HDInsight.ExtensionsClient
+	actionScriptsClient := meta.(*clients.Client).HDInsight.ScriptActionsClient
 	ctx, cancel := timeouts.ForRead(meta.(*clients.Client).StopContext, d)
 	defer cancel()
 
@@ -304,6 +325,11 @@ func resourceHDInsightHBaseClusterRead(d *pluginsdk.ResourceData, meta interface
 		d.Set("location", azure.NormalizeLocation(*location))
 	}
 
+	actionScripts, err := actionScriptsClient.ListByCluster(ctx, resourceGroup, name)
+	if err != nil {
+		return fmt.Errorf("failure retrieving ActionScripts for HDInsight HBase Cluster %q (Resource Group %q): %+v", name, resourceGroup, err)
+	}
+
 	// storage_account isn't returned so I guess we just leave it ¯\_(ツ)_/¯
 	if props := resp.Properties; props != nil {
 		tier := ""
@@ -322,7 +348,7 @@ func resourceHDInsightHBaseClusterRead(d *pluginsdk.ResourceData, meta interface
 				return fmt.Errorf("failure flattening `component_version`: %+v", err)
 			}
 
-			if err := d.Set("gateway", FlattenHDInsightsConfigurations(gateway, d)); err != nil {
+			if err := d.Set("gateway", FlattenHDInsightsGatewayConfiguration(gateway, d)); err != nil {
 				return fmt.Errorf("failure flattening `gateway`: %+v", err)
 			}
 
@@ -340,7 +366,11 @@ func resourceHDInsightHBaseClusterRead(d *pluginsdk.ResourceData, meta interface
 			WorkerNodeDef:    hdInsightHBaseClusterWorkerNodeDefinition,
 			ZookeeperNodeDef: hdInsightHBaseClusterZookeeperNodeDefinition,
 		}
-		flattenedRoles := flattenHDInsightRoles(d, props.ComputeProfile, hbaseRoles)
+		if props.EncryptionInTransitProperties != nil {
+			d.Set("encryption_in_transit_enabled", props.EncryptionInTransitProperties.IsEncryptionInTransitEnabled)
+		}
+		clusterActionScripts := actionScripts.Values()
+		flattenedRoles := flattenHDInsightRoles(d, props.ComputeProfile, clusterActionScripts, hbaseRoles)
 		if err := d.Set("roles", flattenedRoles); err != nil {
 			return fmt.Errorf("failure flattening `roles`: %+v", err)
 		}
@@ -356,10 +386,10 @@ func resourceHDInsightHBaseClusterRead(d *pluginsdk.ResourceData, meta interface
 		}
 
 		d.Set("monitor", flattenHDInsightMonitoring(monitor))
-
 		if err := d.Set("security_profile", flattenHDInsightSecurityProfile(props.SecurityProfile, d)); err != nil {
 			return fmt.Errorf("setting `security_profile`: %+v", err)
 		}
+		FlattenHDInsightsConfigurationOverrides(d, configurations.Configurations)
 	}
 
 	return tags.FlattenAndSet(d, resp.Tags)

@@ -196,8 +196,12 @@ func resourceHDInsightKafkaClusterCreate(d *pluginsdk.ResourceData, meta interfa
 	componentVersionsRaw := d.Get("component_version").([]interface{})
 	componentVersions := expandHDInsightKafkaComponentVersion(componentVersionsRaw)
 
+	configurations := map[string]interface{}{}
 	gatewayRaw := d.Get("gateway").([]interface{})
-	configurations := ExpandHDInsightsConfigurations(gatewayRaw)
+	gatewayConfigurations := ExpandHDInsightsGatewayConfigurations(gatewayRaw)
+	for k, v := range gatewayConfigurations {
+		configurations[k] = v
+	}
 
 	metastoresRaw := d.Get("metastores").([]interface{})
 	metastores := expandHDInsightsMetastore(metastoresRaw)
@@ -315,6 +319,7 @@ func resourceHDInsightKafkaClusterRead(d *pluginsdk.ResourceData, meta interface
 	clustersClient := meta.(*clients.Client).HDInsight.ClustersClient
 	configurationsClient := meta.(*clients.Client).HDInsight.ConfigurationsClient
 	extensionsClient := meta.(*clients.Client).HDInsight.ExtensionsClient
+	actionScriptsClient := meta.(*clients.Client).HDInsight.ScriptActionsClient
 	ctx, cancel := timeouts.ForRead(meta.(*clients.Client).StopContext, d)
 	defer cancel()
 
@@ -354,6 +359,11 @@ func resourceHDInsightKafkaClusterRead(d *pluginsdk.ResourceData, meta interface
 		d.Set("location", azure.NormalizeLocation(*location))
 	}
 
+	actionScripts, err := actionScriptsClient.ListByCluster(ctx, resourceGroup, name)
+	if err != nil {
+		return fmt.Errorf("failure retrieving ActionScripts for HDInsight Kafka Cluster %q (Resource Group %q): %+v", name, resourceGroup, err)
+	}
+
 	// storage_account isn't returned so I guess we just leave it ¯\_(ツ)_/¯
 	if props := resp.Properties; props != nil {
 		tier := ""
@@ -372,7 +382,7 @@ func resourceHDInsightKafkaClusterRead(d *pluginsdk.ResourceData, meta interface
 				return fmt.Errorf("failure flattening `component_version`: %+v", err)
 			}
 
-			if err := d.Set("gateway", FlattenHDInsightsConfigurations(gateway, d)); err != nil {
+			if err := d.Set("gateway", FlattenHDInsightsGatewayConfiguration(gateway, d)); err != nil {
 				return fmt.Errorf("failure flattening `gateway`: %+v", err)
 			}
 
@@ -385,7 +395,8 @@ func resourceHDInsightKafkaClusterRead(d *pluginsdk.ResourceData, meta interface
 			ZookeeperNodeDef:       hdInsightKafkaClusterZookeeperNodeDefinition,
 			KafkaManagementNodeDef: &hdInsightKafkaClusterKafkaManagementNodeDefinition,
 		}
-		flattenedRoles := flattenHDInsightRoles(d, props.ComputeProfile, kafkaRoles)
+		clusterActionScripts := actionScripts.Values()
+		flattenedRoles := flattenHDInsightRoles(d, props.ComputeProfile, clusterActionScripts, kafkaRoles)
 		if err := d.Set("roles", flattenedRoles); err != nil {
 			return fmt.Errorf("failure flattening `roles`: %+v", err)
 		}

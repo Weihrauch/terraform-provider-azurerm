@@ -57,6 +57,15 @@ func SchemaHDInsightTls() *pluginsdk.Schema {
 	}
 }
 
+func SchemaHDInsightEnryptionInTransit() *pluginsdk.Schema {
+	return &pluginsdk.Schema{
+		Type:     pluginsdk.TypeBool,
+		Optional: true,
+		ForceNew: true,
+		Default:  false,
+	}
+}
+
 func SchemaHDInsightClusterVersion() *pluginsdk.Schema {
 	return &pluginsdk.Schema{
 		Type:             pluginsdk.TypeString,
@@ -289,7 +298,16 @@ func SchemaHDInsightsSecurityProfile() *pluginsdk.Schema {
 	}
 }
 
-func ExpandHDInsightsConfigurations(input []interface{}) map[string]interface{} {
+func ExpandHDInsightsConfigurationsOverrides(input *[]interface{}, configurations *map[string]*interface{}) {
+	for _, v := range *input {
+		rawConfiguration := v.(map[string]interface{})
+		section := rawConfiguration["section"].(string)
+		_configuration := rawConfiguration["configuration"]
+		(*configurations)[section] = &_configuration
+	}
+}
+
+func ExpandHDInsightsGatewayConfigurations(input []interface{}) map[string]interface{} {
 	vs := input[0].(map[string]interface{})
 
 	// NOTE: Admin username must be different from SSH Username
@@ -445,7 +463,95 @@ func FlattenHDInsightsNetwork(input *hdinsight.NetworkProperties) []interface{} 
 	}
 }
 
-func FlattenHDInsightsConfigurations(input map[string]*string, d *pluginsdk.ResourceData) []interface{} {
+/* Section and key settings blacklisted from terraform
+- If value is nil it means all keys of section should be blackslited
+- Key blacklisted in configuration_overrides are the ones already configured by other hdinsight ressource fields
+*/
+func GetConfigurationOverridesBlacklistedSectionKey() map[string][]string {
+	return map[string][]string{
+		"clusterIdentity": nil,
+		"core-site": {
+			"fs.defaultFS",
+		},
+		"storageIdenity": nil,
+		"ambari-conf": {
+			"database-server",
+			"database-name",
+			"database-user-name",
+			"database-user-password"},
+		"oozie-site": {
+			"oozie.service.JPAService.jdbc.driver",
+			"oozie.service.JPAService.jdbc.url",
+			"oozie.service.JPAService.jdbc.username",
+			"oozie.service.JPAService.jdbc.password",
+			"oozie.db.pluginsdk.name",
+			"oozie.db.schema.name",
+		},
+		"oozie-env": {
+			"oozie_database",
+			"oozie_database_name",
+			"oozie_database_type",
+			"oozie_existing_mssql_server_database",
+			"oozie_existing_mssql_server_host",
+			"oozie_hostname",
+		},
+		"gateway": {
+			"restAuthCredential.isEnabled",
+			"restAuthCredential.username",
+			"restAuthCredential.password",
+		},
+		"hive-site": {
+			"javax.jdo.option.ConnectionDriverName",
+			"javax.jdo.option.ConnectionURL",
+			"javax.jdo.option.ConnectionUserName",
+			"javax.jdo.option.ConnectionPassword",
+		},
+		"hive-env": {
+			"hive_database",
+			"hive_database_name",
+			"hive_database_type",
+			"hive_existing_mssql_server_database",
+			"hive_existing_mssql_server_host",
+			"hive_hostname",
+		},
+	}
+}
+
+func CheckIfConfigurationKeyIsBlacklisted(confSection string, confKey string) bool {
+	HdinsightConfigurationOverridesBlacklistedSectionKey := GetConfigurationOverridesBlacklistedSectionKey()
+	if blacklistedConfSection, ok := HdinsightConfigurationOverridesBlacklistedSectionKey[confSection]; ok {
+		if blacklistedConfSection == nil {
+			// Blacklist all keys of section
+			return true
+		}
+		for _, v := range blacklistedConfSection {
+			if v == confKey {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func FlattenHDInsightsConfigurationOverrides(d *pluginsdk.ResourceData, configurations map[string]map[string]*string) {
+	out := []map[string]interface{}{}
+	for confSection, configuration := range configurations {
+		for confKey, _ := range configuration {
+			if CheckIfConfigurationKeyIsBlacklisted(confSection, confKey) {
+				delete(configuration, confKey)
+			}
+		}
+		if len(configuration) > 0 {
+			out = append(out, map[string]interface{}{
+				"section":       confSection,
+				"configuration": configuration,
+			})
+		}
+	}
+	d.Set("configuration_override", out)
+}
+
+func FlattenHDInsightsGatewayConfiguration(input map[string]*string, d *pluginsdk.ResourceData) []interface{} {
 	username := ""
 	if v, exists := input["restAuthCredential.username"]; exists && v != nil {
 		username = *v
@@ -569,6 +675,28 @@ func FlattenHDInsightsAmbariMetastore(conf map[string]*string) []interface{} {
 	}
 
 	return nil
+}
+
+func SchemaHDInsightsConfigurations() *pluginsdk.Schema {
+	return &pluginsdk.Schema{
+		Type:     pluginsdk.TypeSet,
+		Optional: true,
+		ForceNew: true,
+		Elem: &pluginsdk.Resource{
+			Schema: map[string]*pluginsdk.Schema{
+				"section": {
+					Type:     pluginsdk.TypeString,
+					Required: true},
+				"configuration": {
+					Type:     pluginsdk.TypeMap,
+					Required: true,
+					Elem: &pluginsdk.Schema{
+						Type: pluginsdk.TypeString,
+					},
+				},
+			},
+		},
+	}
 }
 
 func SchemaHDInsightsStorageAccounts() *pluginsdk.Schema {
@@ -721,6 +849,36 @@ type HDInsightNodeDefinition struct {
 	CanAutoScaleOnSchedule   bool
 }
 
+func SchemaHDInsightsScriptActions() *pluginsdk.Schema {
+	return &pluginsdk.Schema{
+		Type:     pluginsdk.TypeSet,
+		Optional: true,
+		ForceNew: true,
+		MinItems: 1,
+		Elem: &pluginsdk.Resource{
+			Schema: map[string]*pluginsdk.Schema{
+				"name": {
+					Type:         pluginsdk.TypeString,
+					Required:     true,
+					ForceNew:     true,
+					ValidateFunc: validation.StringIsNotEmpty,
+				},
+				"uri": {
+					Type:         pluginsdk.TypeString,
+					Required:     true,
+					ForceNew:     true,
+					ValidateFunc: validation.StringIsNotEmpty,
+				},
+				"parameters": {
+					Type:         pluginsdk.TypeString,
+					Optional:     true,
+					ForceNew:     true,
+					ValidateFunc: validation.StringIsNotEmpty,
+				},
+			},
+		},
+	}
+}
 func SchemaHDInsightNodeDefinition(schemaLocation string, definition HDInsightNodeDefinition, required bool) *pluginsdk.Schema {
 	result := map[string]*pluginsdk.Schema{
 		"vm_size": {
@@ -767,6 +925,7 @@ func SchemaHDInsightNodeDefinition(schemaLocation string, definition HDInsightNo
 			ForceNew:     true,
 			ValidateFunc: azure.ValidateResourceIDOrEmpty,
 		},
+		"script_actions": SchemaHDInsightsScriptActions(),
 	}
 
 	if definition.CanSpecifyInstanceCount {
@@ -906,6 +1065,24 @@ func SchemaHDInsightNodeDefinition(schemaLocation string, definition HDInsightNo
 	return s
 }
 
+func ExpandHDInsightScriptActionsDefintion(input []interface{}) *[]hdinsight.ScriptAction {
+	actions := []hdinsight.ScriptAction{}
+	for _, v := range input {
+		_v := v.(map[string]interface{})
+		name := _v["name"].(string)
+		uri := _v["uri"].(string)
+		parameters := _v["parameters"].(string)
+		action := hdinsight.ScriptAction{
+			Name:       utils.String(name),
+			URI:        utils.String(uri),
+			Parameters: utils.String(parameters),
+		}
+
+		actions = append(actions, action)
+	}
+	return &actions
+}
+
 func ExpandHDInsightNodeDefinition(name string, input []interface{}, definition HDInsightNodeDefinition) (*hdinsight.Role, error) {
 	v := input[0].(map[string]interface{})
 	vmSize := v["vm_size"].(string)
@@ -913,6 +1090,7 @@ func ExpandHDInsightNodeDefinition(name string, input []interface{}, definition 
 	password := v["password"].(string)
 	virtualNetworkId := v["virtual_network_id"].(string)
 	subnetId := v["subnet_id"].(string)
+	scriptActions := v["script_actions"].(*pluginsdk.Set).List()
 
 	role := hdinsight.Role{
 		Name: utils.String(name),
@@ -924,6 +1102,7 @@ func ExpandHDInsightNodeDefinition(name string, input []interface{}, definition 
 				Username: utils.String(username),
 			},
 		},
+		ScriptActions: ExpandHDInsightScriptActionsDefintion(scriptActions),
 	}
 
 	virtualNetworkSpecified := virtualNetworkId != ""
@@ -1164,8 +1343,24 @@ func FlattenHDInsightNodeDefinition(input *hdinsight.Role, existing []interface{
 			}
 		}
 	}
-
 	return []interface{}{output}
+}
+func FindHDInsightRoleScriptActions(input []hdinsight.RuntimeScriptActionDetail, role string) []*hdinsight.RuntimeScriptActionDetail {
+	if input == nil {
+		return nil
+	}
+	ret := []*hdinsight.RuntimeScriptActionDetail{}
+	for k, v := range input {
+		if v.Roles == nil {
+			continue
+		}
+		for _, assignedRole := range *v.Roles {
+			if strings.EqualFold(assignedRole, role) {
+				ret = append(ret, &(input[k]))
+			}
+		}
+	}
+	return ret
 }
 
 func FindHDInsightRole(input *[]hdinsight.Role, name string) *hdinsight.Role {

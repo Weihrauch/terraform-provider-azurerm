@@ -143,7 +143,7 @@ func dataSourceHDInsightClusterRead(d *pluginsdk.ResourceData, meta interface{})
 			if kind := def.Kind; kind != nil {
 				d.Set("kind", strings.ToLower(*kind))
 			}
-			if err := d.Set("gateway", FlattenHDInsightsConfigurations(configuration.Value, d)); err != nil {
+			if err := d.Set("gateway", FlattenHDInsightsGatewayConfiguration(configuration.Value, d)); err != nil {
 				return fmt.Errorf("flattening `gateway`: %+v", err)
 			}
 		}
